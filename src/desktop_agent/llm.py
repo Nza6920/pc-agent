@@ -11,8 +11,8 @@ class LLMClient:
         self.model = model
         self.client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout_sec)
 
-    def request_decision(self, user_prompt: str, screenshot_b64: str) -> LLMDecision:
-        raw = self._complete(user_prompt, screenshot_b64)
+    def request_decision(self, user_prompt: str, screenshot_b64: str, image_mime_type: str) -> LLMDecision:
+        raw = self._complete(user_prompt, screenshot_b64, image_mime_type)
         try:
             return parse_decision(raw)
         except Exception as first_err:
@@ -21,10 +21,10 @@ class LLMClient:
                 + "\n\nYour previous output was invalid JSON for this schema. "
                 + f"Error: {first_err}. Return strict JSON only."
             )
-            raw_repair = self._complete(repair_prompt, screenshot_b64)
+            raw_repair = self._complete(repair_prompt, screenshot_b64, image_mime_type)
             return parse_decision(raw_repair)
 
-    def _complete(self, user_prompt: str, screenshot_b64: str) -> str:
+    def _complete(self, user_prompt: str, screenshot_b64: str, image_mime_type: str) -> str:
         response = self.client.chat.completions.create(
             model=self.model,
             temperature=0.2,
@@ -36,7 +36,7 @@ class LLMClient:
                         {"type": "text", "text": user_prompt},
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"},
+                            "image_url": {"url": f"data:{image_mime_type};base64,{screenshot_b64}"},
                         },
                     ],
                 },

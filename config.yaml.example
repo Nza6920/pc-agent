@@ -9,6 +9,12 @@ runtime:
   step_delay_sec: 0.4
   screenshot_path: "./runs/latest.png"
   log_path: "./runs/session.log"
+  image_format: "jpeg" # jpeg | png
+  image_max_long_edge: 1280
+  image_jpeg_quality: 70 # [1,95], only for jpeg
+  guard_exact_repeat_threshold: 5 # 完全相同动作重复达到该值后阻断
+  guard_semantic_repeat_threshold: 4 # 语义相同动作(坐标网格+动作)重复达到该值后阻断
+  guard_phase_stagnant_threshold: 1000000 # 设很大值近似关闭阶段停滞阻断；0也可视为关闭
 
 safety:
   mode: "mixed" # auto | mixed | manual

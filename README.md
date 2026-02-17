@@ -18,6 +18,7 @@
 - 安全模式（`auto` / `mixed` / `manual`）
 - 中文等非 ASCII 文本输入优先使用粘贴策略（提升稳定性）
 - 重复动作熔断，避免无限循环
+- 阶段状态机（打开应用/输入内容/保存文件/收尾）与语义重复熔断，降低绕圈概率
 - 基础单测覆盖：配置、坐标映射、输出解析
 
 ## 项目结构
@@ -70,6 +71,11 @@ Copy-Item config.yaml.example config.yaml
 - `openai.base_url`
 - `openai.api_key`
 - `openai.model`
+- 可选图片优化参数（建议保留默认）：`runtime.image_format`、`runtime.image_max_long_edge`、`runtime.image_jpeg_quality`
+- 可选循环防护参数（建议保留默认）
+`runtime.guard_exact_repeat_threshold`：完全相同动作重复阈值，达到后阻断
+`runtime.guard_semantic_repeat_threshold`：语义重复动作阈值（动作+坐标网格），达到后阻断
+`runtime.guard_phase_stagnant_threshold`：阶段停滞阈值；默认设为很大值近似关闭，仅保留重复动作熔断为主保护
 
 示例（阿里云百炼 OpenAI 兼容）：
 
@@ -146,6 +152,13 @@ python agent.py --config config.yaml --task "打开记事本并输入 hello"
 
 - 最新截图：`runs/latest.png`
 - 会话日志：`runs/session.log`（JSON Lines）
+- 分项耗时字段：`capture_sec`、`encode_sec`、`llm_sec`、`action_sec`、`sleep_sec`
+
+日志分析脚本：
+
+```powershell
+python scripts/analyze_session_log.py --log runs/session.log
+```
 
 ## 常见问题
 

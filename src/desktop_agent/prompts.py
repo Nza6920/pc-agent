@@ -9,6 +9,11 @@ Rules:
 5) If impossible, set status=blocked and explain reason_if_blocked.
 6) Never output secrets or request sensitive data.
 7) If the same action failed or had no visible progress twice, DO NOT repeat it again. Choose a different strategy.
+8) Follow the current execution phase and allowed action list from user prompt.
+9) Do not regress to previous phases once a later phase has started.
+10) If no visible progress for 2 consecutive steps, switch strategy immediately.
+11) If the file/content already appears saved (e.g., save confirmed or overwrite confirmed), immediately return completed+finish.
+12) After save success signals, DO NOT type more content and DO NOT repeat save flow.
 """
 
 
@@ -18,8 +23,12 @@ def build_user_prompt(
     height: int,
     coordinate_base: int,
     history: list[str],
+    phase: str,
+    allowed_actions: list[str],
+    phase_note: str,
 ) -> str:
     history_text = "\n".join(history[-8:]) if history else "(none)"
+    allowed_text = ", ".join(allowed_actions)
     return f"""User task:
 {task}
 
@@ -29,8 +38,21 @@ width={width}, height={height}
 Coordinate system you must use:
 {coordinate_base}x{coordinate_base}
 
+Current execution phase:
+{phase}
+Phase guidance:
+{phase_note}
+Allowed actions in this phase:
+{allowed_text}
+
 Recent execution history:
 {history_text}
+
+Completion policy:
+- If you see evidence that task is already completed, return:
+  status="completed" and action.type="finish".
+- Do not continue editing or saving after completion signals.
+- Avoid repeated cycles like "open file menu -> save as -> save -> overwrite" when already done.
 
 Return JSON using this structure:
 {{

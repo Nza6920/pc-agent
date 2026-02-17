@@ -21,6 +21,12 @@ class RuntimeConfig:
     step_delay_sec: float = 0.4
     screenshot_path: str = "./runs/latest.png"
     log_path: str = "./runs/session.log"
+    image_format: str = "jpeg"
+    image_max_long_edge: int = 1280
+    image_jpeg_quality: int = 70
+    guard_exact_repeat_threshold: int = 5
+    guard_semantic_repeat_threshold: int = 4
+    guard_phase_stagnant_threshold: int = 1000000
 
 
 @dataclass
@@ -71,6 +77,12 @@ def load_config(path: str) -> AppConfig:
         step_delay_sec=float(runtime_data.get("step_delay_sec", 0.4)),
         screenshot_path=str(runtime_data.get("screenshot_path", "./runs/latest.png")),
         log_path=str(runtime_data.get("log_path", "./runs/session.log")),
+        image_format=str(runtime_data.get("image_format", "jpeg")).lower(),
+        image_max_long_edge=int(runtime_data.get("image_max_long_edge", 1280)),
+        image_jpeg_quality=int(runtime_data.get("image_jpeg_quality", 70)),
+        guard_exact_repeat_threshold=int(runtime_data.get("guard_exact_repeat_threshold", 5)),
+        guard_semantic_repeat_threshold=int(runtime_data.get("guard_semantic_repeat_threshold", 4)),
+        guard_phase_stagnant_threshold=int(runtime_data.get("guard_phase_stagnant_threshold", 1000000)),
     )
 
     safety_cfg = SafetyConfig(
@@ -94,6 +106,18 @@ def load_config(path: str) -> AppConfig:
         raise ValueError("display.coordinate_base must be > 0")
     if display_cfg.monitor != "primary":
         raise ValueError("Only display.monitor=primary is supported in this version")
+    if runtime_cfg.image_format not in {"jpeg", "png"}:
+        raise ValueError("runtime.image_format must be one of: jpeg, png")
+    if runtime_cfg.image_max_long_edge <= 0:
+        raise ValueError("runtime.image_max_long_edge must be > 0")
+    if not 1 <= runtime_cfg.image_jpeg_quality <= 95:
+        raise ValueError("runtime.image_jpeg_quality must be in [1,95]")
+    if runtime_cfg.guard_exact_repeat_threshold < 2:
+        raise ValueError("runtime.guard_exact_repeat_threshold must be >= 2")
+    if runtime_cfg.guard_semantic_repeat_threshold < 2:
+        raise ValueError("runtime.guard_semantic_repeat_threshold must be >= 2")
+    if runtime_cfg.guard_phase_stagnant_threshold < 0:
+        raise ValueError("runtime.guard_phase_stagnant_threshold must be >= 0")
 
     return AppConfig(
         openai=openai_cfg,
