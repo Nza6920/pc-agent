@@ -1,0 +1,23 @@
+openai:
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  api_key: "YOUR_API_KEY_HERE"
+  model: "qwen-vl-max-latest"
+  timeout_sec: 60
+
+runtime:
+  max_steps: 40
+  step_delay_sec: 0.4
+  screenshot_path: "./runs/latest.png"
+  log_path: "./runs/session.log"
+
+safety:
+  mode: "mixed" # auto | mixed | manual
+  confirm_actions:
+    - "type_text"
+    - "hotkey"
+    - "right_click"
+    - "double_click"
+
+display:
+  monitor: "primary"
+  coordinate_base: 1000
