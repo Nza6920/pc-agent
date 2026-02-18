@@ -5,3 +5,4 @@ __pycache__/
 runs/
 .idea/
 config.yaml
+src/desktop_agent.egg-info/

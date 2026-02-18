@@ -1,4 +1,6 @@
-﻿# 桌面自动化 Agent（mss + pyautogui + OpenAI SDK）
+# 桌面自动化 Agent（mss + pyautogui + OpenAI SDK）
+
+[English Version](README_EN.md)
 
 本项目实现了一个“看屏幕并操作电脑”的循环式 Agent，流程如下：
 
