@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from .actions import perform_action
 from .config import AppConfig
-from .llm import LLMClient
+from .llm import LLMCallResult, LLMClient, LLMResponseParseError
 from .prompts import build_user_prompt
 from .safety import confirm_action_cli, needs_confirmation
 from .screen import capture_primary_image, file_to_base64, get_primary_resolution
@@ -18,6 +20,14 @@ def _append_log(path: str, item: dict) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     with log_file.open("a", encoding="utf-8") as f:
         f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+
+def _write_llm_trace(trace_dir: str, session_id: str, step: int, trace_payload: dict[str, Any]) -> None:
+    out_dir = Path(trace_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_file = out_dir / f"{session_id}_step_{step:04d}_{ts}.json"
+    out_file.write_text(json.dumps(trace_payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _action_signature(action_type: str, payload: dict[str, Any]) -> str:
@@ -100,12 +110,17 @@ def _image_mime_type(image_format: str) -> str:
 
 def run_agent(task: str, cfg: AppConfig) -> int:
     total_start = time.perf_counter()
+    session_id = uuid4().hex
+
+    def _append_session_log(item: dict[str, Any]) -> None:
+        payload = dict(item)
+        payload.setdefault("session_id", session_id)
+        _append_log(cfg.runtime.log_path, payload)
 
     def _finish(code: int) -> int:
         total_elapsed = time.perf_counter() - total_start
         print(f"[TOTAL] elapsed={total_elapsed:.2f}s")
-        _append_log(
-            cfg.runtime.log_path,
+        _append_session_log(
             {
                 "type": "summary",
                 "status_code": code,
@@ -131,8 +146,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
             f"(capture={capture_sec:.2f}s encode={encode_sec:.2f}s llm={llm_sec:.2f}s "
             f"action={action_sec:.2f}s sleep={sleep_sec:.2f}s)"
         )
-        _append_log(
-            cfg.runtime.log_path,
+        _append_session_log(
             {
                 "step": step,
                 "type": "step_timing",
@@ -163,6 +177,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
     phase_stagnant_steps = 0
     print(f"[INFO] Resolution: {width}x{height}")
     print(f"[INFO] Task: {task}")
+    print(f"[INFO] Session: {session_id}")
     print(
         "[INFO] Image optimize: "
         f"format={cfg.runtime.image_format} "
@@ -209,13 +224,74 @@ def run_agent(task: str, cfg: AppConfig) -> int:
         )
 
         t0 = time.perf_counter()
-        decision = llm.request_decision(prompt, screenshot_b64, _image_mime_type(cfg.runtime.image_format))
+        try:
+            llm_result: LLMCallResult = llm.request_decision(prompt, screenshot_b64, _image_mime_type(cfg.runtime.image_format))
+        except LLMResponseParseError as exc:
+            llm_sec = time.perf_counter() - t0
+            if cfg.runtime.llm_trace_enabled:
+                _write_llm_trace(
+                    cfg.runtime.llm_trace_dir,
+                    session_id,
+                    step,
+                    {
+                        "step": step,
+                        "session_id": session_id,
+                        "timestamp": datetime.now().isoformat(timespec="seconds"),
+                        "phase": phase,
+                        "task": task,
+                        "screenshot_file": screenshot_file,
+                        "model": cfg.openai.model,
+                        "trace": exc.trace,
+                        "fatal_error": str(exc),
+                    },
+                )
+            _log_step_timing(
+                step=step,
+                step_start=step_start,
+                end_state="blocked_invalid_model_json",
+                capture_sec=capture_sec,
+                encode_sec=encode_sec,
+                llm_sec=llm_sec,
+                action_sec=action_sec,
+                sleep_sec=sleep_sec,
+            )
+            reason = "Model output is not valid JSON after retry."
+            print(f"[BLOCKED] {reason}")
+            _append_session_log(
+                {"step": step, "status": "blocked", "reason": reason, "phase": phase},
+            )
+            return _finish(2)
         llm_sec = time.perf_counter() - t0
+        decision = llm_result.decision
         action_type = decision.action.type
         payload = decision.action.payload
         preview = f"{action_type} {payload}"
         current_sig = _action_signature(action_type, payload)
         semantic_sig = _semantic_action_signature(action_type, payload, cfg.display.coordinate_base)
+
+        if cfg.runtime.llm_trace_enabled:
+            _write_llm_trace(
+                cfg.runtime.llm_trace_dir,
+                session_id,
+                step,
+                {
+                    "step": step,
+                    "session_id": session_id,
+                    "timestamp": datetime.now().isoformat(timespec="seconds"),
+                    "phase": phase,
+                    "task": task,
+                    "screenshot_file": screenshot_file,
+                    "model": cfg.openai.model,
+                    "trace": llm_result.trace,
+                    "parsed_decision": {
+                        "status": decision.status,
+                        "action_type": action_type,
+                        "confidence": decision.confidence,
+                        "thought": decision.thought,
+                        "payload": payload,
+                    },
+                },
+            )
 
         if current_sig == last_sig:
             repeat_count += 1
@@ -235,8 +311,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
             f"[STEP {step}] phase={phase} thought={decision.thought} "
             f"status={decision.status} action={preview}"
         )
-        _append_log(
-            cfg.runtime.log_path,
+        _append_session_log(
             {
                 "step": step,
                 "phase": phase,
@@ -294,8 +369,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
                 sleep_sec=sleep_sec,
             )
             print(f"[BLOCKED] {reason}")
-            _append_log(
-                cfg.runtime.log_path,
+            _append_session_log(
                 {"step": step, "status": "blocked", "reason": reason, "action_type": action_type, "payload": payload},
             )
             return _finish(2)
@@ -317,8 +391,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
                 sleep_sec=sleep_sec,
             )
             print(f"[BLOCKED] {reason}")
-            _append_log(
-                cfg.runtime.log_path,
+            _append_session_log(
                 {
                     "step": step,
                     "status": "blocked",
@@ -382,8 +455,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
                 sleep_sec=sleep_sec,
             )
             print(f"[BLOCKED] {reason}")
-            _append_log(
-                cfg.runtime.log_path,
+            _append_session_log(
                 {"step": step, "status": "blocked", "reason": reason, "phase": phase},
             )
             return _finish(2)

@@ -151,13 +151,29 @@ python agent.py --config config.yaml --task "打开记事本并输入 hello"
 ## 产物与日志
 
 - 最新截图：`runs/latest.png`
-- 会话日志：`runs/session.log`（JSON Lines）
+- 会话日志：`runs/session.log`（JSON Lines，每条记录包含 `session_id`）
+- LLM 调用追踪：`runs/llm_traces/`（每步一个 JSON，文件名带 `session_id`，含完整 system/user prompt 与原始模型返回）
 - 分项耗时字段：`capture_sec`、`encode_sec`、`llm_sec`、`action_sec`、`sleep_sec`
 
 日志分析脚本：
 
 ```powershell
 python scripts/analyze_session_log.py --log runs/session.log
+```
+
+按会话分析（需要日志中已包含 `session_id`）：
+
+```powershell
+python scripts/analyze_session_log.py --log runs/session.log --latest-session
+python scripts/analyze_session_log.py --log runs/session.log --session-id 20260218_205500_ab12cd34
+```
+
+可在配置中关闭/调整 LLM 追踪：
+
+```yaml
+runtime:
+  llm_trace_enabled: true
+  llm_trace_dir: "./runs/llm_traces"
 ```
 
 ## 常见问题

@@ -36,12 +36,33 @@ def fmt(v: float) -> str:
     return f"{v:.3f}s"
 
 
-def analyze(log_path: Path) -> int:
+def analyze(log_path: Path, session_id: str | None = None, latest_session: bool = False) -> int:
     if not log_path.exists():
         print(f"[ERROR] log file not found: {log_path}")
         return 1
 
     rows = load_rows(log_path)
+    if session_id and latest_session:
+        print("[ERROR] --session-id and --latest-session cannot be used together.")
+        return 3
+
+    selected_session_id = session_id
+    if latest_session:
+        for row in reversed(rows):
+            sid = row.get("session_id")
+            if isinstance(sid, str) and sid:
+                selected_session_id = sid
+                break
+        if not selected_session_id:
+            print("[ERROR] no session_id found in log.")
+            return 4
+
+    if selected_session_id:
+        rows = [r for r in rows if r.get("session_id") == selected_session_id]
+        if not rows:
+            print(f"[ERROR] session_id not found in log: {selected_session_id}")
+            return 5
+
     step_rows = [r for r in rows if r.get("type") == "step_timing"]
     action_rows = [r for r in rows if "step" in r and "action_type" in r]
     summary_rows = [r for r in rows if r.get("type") == "summary"]
@@ -62,6 +83,8 @@ def analyze(log_path: Path) -> int:
         row["action_type"] = action_by_step.get(step, "unknown")
 
     print(f"Log: {log_path}")
+    if selected_session_id:
+        print(f"Session: {selected_session_id}")
     print(f"Steps: {len(step_rows)}")
     if summary_rows:
         total = summary_rows[-1].get("total_elapsed_sec")
@@ -113,8 +136,10 @@ def analyze(log_path: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Analyze desktop-agent session log timings.")
     parser.add_argument("--log", default="runs/session.log", help="Path to session log file")
+    parser.add_argument("--session-id", default=None, help="Analyze only one session_id")
+    parser.add_argument("--latest-session", action="store_true", help="Analyze the latest session_id in log")
     args = parser.parse_args()
-    return analyze(Path(args.log))
+    return analyze(Path(args.log), session_id=args.session_id, latest_session=args.latest_session)
 
 
 if __name__ == "__main__":

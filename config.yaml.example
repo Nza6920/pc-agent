@@ -9,6 +9,8 @@ runtime:
   step_delay_sec: 0.4
   screenshot_path: "./runs/latest.png"
   log_path: "./runs/session.log"
+  llm_trace_enabled: true
+  llm_trace_dir: "./runs/llm_traces"
   image_format: "jpeg" # jpeg | png
   image_max_long_edge: 1280
   image_jpeg_quality: 70 # [1,95], only for jpeg

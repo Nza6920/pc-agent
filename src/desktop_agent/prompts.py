@@ -14,6 +14,7 @@ Rules:
 10) If no visible progress for 2 consecutive steps, switch strategy immediately.
 11) If the file/content already appears saved (e.g., save confirmed or overwrite confirmed), immediately return completed+finish.
 12) After save success signals, DO NOT type more content and DO NOT repeat save flow.
+13) Coordinates must be valid JSON fields: use `"x": number` and `"y": number` separately. Never use forms like `"x": 100, 200`.
 """
 
 
@@ -53,6 +54,9 @@ Completion policy:
   status="completed" and action.type="finish".
 - Do not continue editing or saving after completion signals.
 - Avoid repeated cycles like "open file menu -> save as -> save -> overwrite" when already done.
+- Coordinate format must be strict JSON: if action needs position, include both `"x"` and `"y"` keys explicitly.
+- Invalid example (forbidden): `"x": 107, 892`
+- Valid example: `"x": 107, "y": 892`
 
 Return JSON using this structure:
 {{
