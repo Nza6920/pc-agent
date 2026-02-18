@@ -1,31 +1,32 @@
-openai:
-  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-  api_key: "YOUR_API_KEY_HERE"
-  model: "qwen-vl-max-latest"
-  timeout_sec: 60
+openai: # 大模型调用配置
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1" # OpenAI 兼容接口地址（阿里云百炼）
+  api_key: "YOUR_API_KEY_HERE" # API Key（请替换为你的真实密钥）
+  model: "qwen3-vl-flash" # 使用的模型名称（需支持图像输入，推荐：qwen3-vl-flash）
+  timeout_sec: 60 # 单次模型请求超时时间（秒）
 
-runtime:
-  max_steps: 40
-  step_delay_sec: 0.4
-  screenshot_path: "./runs/latest.png"
-  log_path: "./runs/session.log"
-  llm_trace_enabled: true
-  llm_trace_dir: "./runs/llm_traces"
-  image_format: "jpeg" # jpeg | png
-  image_max_long_edge: 1280
-  image_jpeg_quality: 70 # [1,95], only for jpeg
-  guard_exact_repeat_threshold: 5 # 完全相同动作重复达到该值后阻断
-  guard_semantic_repeat_threshold: 4 # 语义相同动作(坐标网格+动作)重复达到该值后阻断
-  guard_phase_stagnant_threshold: 1000000 # 设很大值近似关闭阶段停滞阻断；0也可视为关闭
+runtime: # Agent 运行时配置
+  max_steps: 40 # 单次任务最多执行多少步，超过后停止
+  step_delay_sec: 0.4 # 每一步执行后的固定等待时间（秒）
+  screenshot_path: "./runs/latest.png" # 最新截图保存路径（会被覆盖）
+  log_path: "./runs/session.log" # 会话日志文件路径（JSONL）
+  llm_trace_enabled: true # 是否记录每步完整提示词/模型返回 trace
+  llm_trace_dir: "./runs/llm_traces" # trace 输出目录
+  image_format: "jpeg" # 截图格式：jpeg | png
+  image_max_long_edge: 1280 # 截图最长边缩放上限（像素），用于提速与降成本
+  image_jpeg_quality: 70 # JPEG 压缩质量 [1,95]，仅 image_format=jpeg 时生效
+  guard_exact_repeat_threshold: 5 # 完全相同动作+参数连续重复达到该值后阻断
+  guard_semantic_repeat_threshold: 4 # 语义相近动作（如同区域重复点击/同文本重复输入）达到该值后阻断
+  guard_phase_stagnant_threshold: 1000000 # 阶段停滞阻断阈值；设很大值近似关闭，0 视为关闭
+  guard_type_text_focus: true # 输入焦点守卫：无焦点准备时禁止直接 type_text
 
-safety:
-  mode: "mixed" # auto | mixed | manual
-  confirm_actions:
-    - "type_text"
-    - "hotkey"
-    - "right_click"
-    - "double_click"
+safety: # 安全交互配置
+  mode: "mixed" # 执行模式：auto(全自动) | mixed(部分确认) | manual(全部确认)
+  confirm_actions: # 在 mixed/manual 下需要人工确认的动作类型列表
+    - "type_text" # 输入文本
+    - "hotkey" # 组合键
+    - "right_click" # 右键点击
+    - "double_click" # 双击
 
-display:
-  monitor: "primary"
-  coordinate_base: 1000
+display: # 显示与坐标映射配置
+  monitor: "primary" # 目标显示器，目前仅支持 primary
+  coordinate_base: 1000 # 模型坐标基准边长（1000 表示模型输出 1000x1000 坐标系）

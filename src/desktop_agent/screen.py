@@ -1,16 +1,78 @@
 from __future__ import annotations
 
 import base64
+import ctypes
 from pathlib import Path
+from typing import Any
 
 import mss
+import pyautogui
 from PIL import Image
 
 
+def enable_windows_dpi_awareness() -> None:
+    if not hasattr(ctypes, "windll"):
+        return
+    user32 = ctypes.windll.user32
+    shcore = getattr(ctypes.windll, "shcore", None)
+    try:
+        # Windows 10+: Per-monitor DPI aware v2.
+        user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        return
+    except Exception:
+        pass
+    try:
+        # Windows 8.1 fallback.
+        if shcore is not None:
+            shcore.SetProcessDpiAwareness(2)
+            return
+    except Exception:
+        pass
+    try:
+        # Legacy fallback.
+        user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
 def get_primary_resolution() -> tuple[int, int]:
+    # Use pyautogui size for coordinate mapping because actions are executed by pyautogui.
+    try:
+        size = pyautogui.size()
+        if int(size.width) > 0 and int(size.height) > 0:
+            return int(size.width), int(size.height)
+    except Exception:
+        pass
+
     with mss.mss() as sct:
         mon = sct.monitors[1]
         return int(mon["width"]), int(mon["height"])
+
+
+def get_resolution_diagnostics() -> dict[str, Any]:
+    py_w = py_h = 0
+    mss_w = mss_h = 0
+    try:
+        size = pyautogui.size()
+        py_w, py_h = int(size.width), int(size.height)
+    except Exception:
+        pass
+    try:
+        with mss.mss() as sct:
+            mon = sct.monitors[1]
+            mss_w, mss_h = int(mon["width"]), int(mon["height"])
+    except Exception:
+        pass
+    scale_x = (mss_w / py_w) if py_w > 0 and mss_w > 0 else None
+    scale_y = (mss_h / py_h) if py_h > 0 and mss_h > 0 else None
+    return {
+        "pyautogui_width": py_w,
+        "pyautogui_height": py_h,
+        "mss_width": mss_w,
+        "mss_height": mss_h,
+        "scale_x": scale_x,
+        "scale_y": scale_y,
+    }
 
 
 def capture_primary_image(

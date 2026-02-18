@@ -29,6 +29,7 @@ class RuntimeConfig:
     guard_exact_repeat_threshold: int = 5
     guard_semantic_repeat_threshold: int = 4
     guard_phase_stagnant_threshold: int = 1000000
+    guard_type_text_focus: bool = True
 
 
 @dataclass
@@ -87,6 +88,7 @@ def load_config(path: str) -> AppConfig:
         guard_exact_repeat_threshold=int(runtime_data.get("guard_exact_repeat_threshold", 5)),
         guard_semantic_repeat_threshold=int(runtime_data.get("guard_semantic_repeat_threshold", 4)),
         guard_phase_stagnant_threshold=int(runtime_data.get("guard_phase_stagnant_threshold", 1000000)),
+        guard_type_text_focus=bool(runtime_data.get("guard_type_text_focus", True)),
     )
 
     safety_cfg = SafetyConfig(

@@ -12,7 +12,13 @@ from .config import AppConfig
 from .llm import LLMCallResult, LLMClient, LLMResponseParseError
 from .prompts import build_user_prompt
 from .safety import confirm_action_cli, needs_confirmation
-from .screen import capture_primary_image, file_to_base64, get_primary_resolution
+from .screen import (
+    capture_primary_image,
+    enable_windows_dpi_awareness,
+    file_to_base64,
+    get_primary_resolution,
+    get_resolution_diagnostics,
+)
 
 
 def _append_log(path: str, item: dict) -> None:
@@ -108,9 +114,20 @@ def _image_mime_type(image_format: str) -> str:
     return "application/octet-stream"
 
 
+def _type_text_focus_ready(
+    *,
+    payload: dict[str, Any],
+    last_action_type: str,
+) -> bool:
+    if "x" in payload and "y" in payload:
+        return True
+    return last_action_type in {"click", "double_click", "right_click", "press", "hotkey"}
+
+
 def run_agent(task: str, cfg: AppConfig) -> int:
     total_start = time.perf_counter()
     session_id = uuid4().hex
+    enable_windows_dpi_awareness()
 
     def _append_session_log(item: dict[str, Any]) -> None:
         payload = dict(item)
@@ -161,6 +178,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
         )
 
     width, height = get_primary_resolution()
+    diag = get_resolution_diagnostics()
     llm = LLMClient(
         base_url=cfg.openai.base_url,
         api_key=cfg.openai.api_key,
@@ -175,7 +193,20 @@ def run_agent(task: str, cfg: AppConfig) -> int:
     semantic_repeat_count = 0
     phase = "observe"
     phase_stagnant_steps = 0
+    last_executed_action_type = ""
     print(f"[INFO] Resolution: {width}x{height}")
+    if diag.get("pyautogui_width") and diag.get("mss_width"):
+        print(
+            "[INFO] Resolution diag: "
+            f"pyautogui={diag['pyautogui_width']}x{diag['pyautogui_height']} "
+            f"mss={diag['mss_width']}x{diag['mss_height']} "
+            f"scale=({(diag['scale_x'] or 0):.3f},{(diag['scale_y'] or 0):.3f})"
+        )
+        if diag["pyautogui_width"] != diag["mss_width"] or diag["pyautogui_height"] != diag["mss_height"]:
+            print(
+                "[WARN] Detected coordinate space mismatch between screenshot(mss) and input(pyautogui). "
+                "DPI scaling may cause click offset."
+            )
     print(f"[INFO] Task: {task}")
     print(f"[INFO] Session: {session_id}")
     print(
@@ -189,6 +220,14 @@ def run_agent(task: str, cfg: AppConfig) -> int:
         f"exact_repeat={cfg.runtime.guard_exact_repeat_threshold} "
         f"semantic_repeat={cfg.runtime.guard_semantic_repeat_threshold} "
         f"phase_stagnant={cfg.runtime.guard_phase_stagnant_threshold}"
+    )
+    _append_session_log(
+        {
+            "type": "startup",
+            "resolution_width": width,
+            "resolution_height": height,
+            "resolution_diag": diag,
+        },
     )
 
     for step in range(1, cfg.runtime.max_steps + 1):
@@ -268,6 +307,37 @@ def run_agent(task: str, cfg: AppConfig) -> int:
         preview = f"{action_type} {payload}"
         current_sig = _action_signature(action_type, payload)
         semantic_sig = _semantic_action_signature(action_type, payload, cfg.display.coordinate_base)
+
+        if action_type == "type_text" and cfg.runtime.guard_type_text_focus:
+            if not _type_text_focus_ready(payload=payload, last_action_type=last_executed_action_type):
+                reason = (
+                    "Focus guard blocked type_text: no explicit target coordinates and no prior focus action. "
+                    "Choose click/press/hotkey to focus an input field first."
+                )
+                history.append(f"Step {step}: {reason}")
+                _append_session_log(
+                    {
+                        "step": step,
+                        "type": "guard",
+                        "guard": "type_text_focus",
+                        "reason": reason,
+                        "action_type": action_type,
+                        "payload": payload,
+                        "phase": phase,
+                    },
+                )
+                _log_step_timing(
+                    step=step,
+                    step_start=step_start,
+                    end_state="guard_type_text_focus",
+                    capture_sec=capture_sec,
+                    encode_sec=encode_sec,
+                    llm_sec=llm_sec,
+                    action_sec=action_sec,
+                    sleep_sec=sleep_sec,
+                )
+                print(f"[GUARD] {reason}")
+                continue
 
         if cfg.runtime.llm_trace_enabled:
             _write_llm_trace(
@@ -430,6 +500,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
             )
             action_sec = time.perf_counter() - t0
             history.append(f"Step {step}: {result}")
+            last_executed_action_type = action_type
 
             phase = _advance_phase(
                 phase,

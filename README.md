@@ -71,19 +71,44 @@ Copy-Item config.yaml.example config.yaml
 - `openai.base_url`
 - `openai.api_key`
 - `openai.model`
-- 可选图片优化参数（建议保留默认）：`runtime.image_format`、`runtime.image_max_long_edge`、`runtime.image_jpeg_quality`
-- 可选循环防护参数（建议保留默认）
-`runtime.guard_exact_repeat_threshold`：完全相同动作重复阈值，达到后阻断
-`runtime.guard_semantic_repeat_threshold`：语义重复动作阈值（动作+坐标网格），达到后阻断
-`runtime.guard_phase_stagnant_threshold`：阶段停滞阈值；默认设为很大值近似关闭，仅保留重复动作熔断为主保护
+- 其他参数可直接使用默认值
+- 推荐使用模型：`qwen3-vl-flash`
 
-示例（阿里云百炼 OpenAI 兼容）：
+完整示例（与 `config.yaml.example` 同步，阿里云百炼 OpenAI 兼容）：
 
 ```yaml
-openai:
-  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-  api_key: "YOUR_API_KEY_HERE"
-  model: "qwen-vl-max-latest"
+openai: # 大模型调用配置
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1" # OpenAI 兼容接口地址（阿里云百炼）
+  api_key: "YOUR_API_KEY_HERE" # API Key（请替换为你的真实密钥）
+  model: "qwen3-vl-flash" # 使用的模型名称（需支持图像输入，推荐：qwen3-vl-flash）
+  timeout_sec: 60 # 单次模型请求超时时间（秒）
+
+runtime: # Agent 运行时配置
+  max_steps: 40 # 单次任务最多执行多少步，超过后停止
+  step_delay_sec: 0.4 # 每一步执行后的固定等待时间（秒）
+  screenshot_path: "./runs/latest.png" # 最新截图保存路径（会被覆盖）
+  log_path: "./runs/session.log" # 会话日志文件路径（JSONL）
+  llm_trace_enabled: true # 是否记录每步完整提示词/模型返回 trace
+  llm_trace_dir: "./runs/llm_traces" # trace 输出目录
+  image_format: "jpeg" # 截图格式：jpeg | png
+  image_max_long_edge: 1280 # 截图最长边缩放上限（像素），用于提速与降成本
+  image_jpeg_quality: 70 # JPEG 压缩质量 [1,95]，仅 image_format=jpeg 时生效
+  guard_exact_repeat_threshold: 5 # 完全相同动作+参数连续重复达到该值后阻断
+  guard_semantic_repeat_threshold: 4 # 语义相近动作（如同区域重复点击/同文本重复输入）达到该值后阻断
+  guard_phase_stagnant_threshold: 1000000 # 阶段停滞阻断阈值；设很大值近似关闭，0 视为关闭
+  guard_type_text_focus: true # 输入焦点守卫：无焦点准备时禁止直接 type_text
+
+safety: # 安全交互配置
+  mode: "mixed" # 执行模式：auto(全自动) | mixed(部分确认) | manual(全部确认)
+  confirm_actions: # 在 mixed/manual 下需要人工确认的动作类型列表
+    - "type_text" # 输入文本
+    - "hotkey" # 组合键
+    - "right_click" # 右键点击
+    - "double_click" # 双击
+
+display: # 显示与坐标映射配置
+  monitor: "primary" # 目标显示器，目前仅支持 primary
+  coordinate_base: 1000 # 模型坐标基准边长（1000 表示模型输出 1000x1000 坐标系）
 ```
 
 ## 启动方式
@@ -91,14 +116,14 @@ openai:
 推荐命令：
 
 ```powershell
-desktop-agent --config config.yaml --task "打开记事本并输入 hello"
+desktop-agent --config config.yaml --task "打开网易云音乐播放我的喜欢"
 ```
 
 其他入口：
 
 ```powershell
-python -m desktop_agent --config config.yaml --task "打开记事本并输入 hello"
-python agent.py --config config.yaml --task "打开记事本并输入 hello"
+python -m desktop_agent --config config.yaml --task "打开网易云音乐播放我的喜欢"
+python agent.py --config config.yaml --task "打开网易云音乐播放我的喜欢"
 ```
 
 不传 `--task` 时会进入交互输入。
@@ -165,7 +190,7 @@ python scripts/analyze_session_log.py --log runs/session.log
 
 ```powershell
 python scripts/analyze_session_log.py --log runs/session.log --latest-session
-python scripts/analyze_session_log.py --log runs/session.log --session-id 20260218_205500_ab12cd34
+python scripts/analyze_session_log.py --log runs/session.log --session-id 39d37e99b95449bfb9b7ee0a1db1cb68
 ```
 
 可在配置中关闭/调整 LLM 追踪：
