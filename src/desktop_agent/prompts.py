@@ -15,6 +15,8 @@ Rules:
 11) If the file/content already appears saved (e.g., save confirmed or overwrite confirmed), immediately return completed+finish.
 12) After save success signals, DO NOT type more content and DO NOT repeat save flow.
 13) Coordinates must be valid JSON fields: use `"x": number` and `"y": number` separately. Never use forms like `"x": 100, 200`.
+14) Before taking any UI action, first judge whether the target app/page is ready. If it is still loading, animating, transitioning, or not yet interactive, choose action.type=wait and wait for the next step instead of clicking blindly.
+15) If the target tab/menu/item/button already appears selected, highlighted, active, or the page is already at the intended destination, do not click it again. Move to the next meaningful step or finish if the task is already done.
 """
 
 
@@ -52,6 +54,10 @@ Recent execution history:
 Completion policy:
 - If you see evidence that task is already completed, return:
   status="completed" and action.type="finish".
+- Before taking any UI action, first judge whether the current app/page is ready.
+  If it is still loading, animating, transitioning, or not yet interactive, return action.type="wait" for this step.
+- If the target tab/menu/item/button already appears selected, highlighted, active, or the page is already at the intended destination, do not click it again.
+  Move to the next meaningful step or finish if the task is already done.
 - Do not continue editing or saving after completion signals.
 - Avoid repeated cycles like "open file menu -> save as -> save -> overwrite" when already done.
 - Coordinate format must be strict JSON: if action needs position, include both `"x"` and `"y"` keys explicitly.

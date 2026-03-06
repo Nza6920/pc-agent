@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,27 @@ from .screen import (
     get_primary_resolution,
     get_resolution_diagnostics,
 )
+
+
+def _show_desktop() -> None:
+    # Normalize the UI before the first screenshot so the agent starts from a stable state.
+    perform_action(
+        action_type="hotkey",
+        payload={"keys": ["win", "d"]},
+        width=1,
+        height=1,
+        base=1,
+    )
+
+
+def _archive_screenshot(path: str, archive_dir: str, session_id: str, step: int) -> str:
+    source = Path(path)
+    target_dir = Path(archive_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    ext = source.suffix or ".png"
+    target = target_dir / f"{session_id}_step_{step:04d}{ext}"
+    shutil.copy2(source, target)
+    return str(target)
 
 
 def _append_log(path: str, item: dict) -> None:
@@ -128,6 +150,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
     total_start = time.perf_counter()
     session_id = uuid4().hex
     enable_windows_dpi_awareness()
+    _show_desktop()
 
     def _append_session_log(item: dict[str, Any]) -> None:
         payload = dict(item)
@@ -209,6 +232,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
             )
     print(f"[INFO] Task: {task}")
     print(f"[INFO] Session: {session_id}")
+    print("[INFO] Desktop normalized with Win+D before first step.")
     print(
         "[INFO] Image optimize: "
         f"format={cfg.runtime.image_format} "
@@ -227,6 +251,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
             "resolution_width": width,
             "resolution_height": height,
             "resolution_diag": diag,
+            "desktop_normalized": True,
         },
     )
 
@@ -244,6 +269,12 @@ def run_agent(task: str, cfg: AppConfig) -> int:
             image_format=cfg.runtime.image_format,
             max_long_edge=cfg.runtime.image_max_long_edge,
             jpeg_quality=cfg.runtime.image_jpeg_quality,
+        )
+        archived_screenshot_file = _archive_screenshot(
+            screenshot_file,
+            cfg.runtime.screenshot_archive_dir,
+            session_id,
+            step,
         )
         capture_sec = time.perf_counter() - t0
 
@@ -279,6 +310,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
                         "phase": phase,
                         "task": task,
                         "screenshot_file": screenshot_file,
+                        "archived_screenshot_file": archived_screenshot_file,
                         "model": cfg.openai.model,
                         "trace": exc.trace,
                         "fatal_error": str(exc),
@@ -351,6 +383,7 @@ def run_agent(task: str, cfg: AppConfig) -> int:
                     "phase": phase,
                     "task": task,
                     "screenshot_file": screenshot_file,
+                    "archived_screenshot_file": archived_screenshot_file,
                     "model": cfg.openai.model,
                     "trace": llm_result.trace,
                     "parsed_decision": {
@@ -390,6 +423,8 @@ def run_agent(task: str, cfg: AppConfig) -> int:
                 "confidence": decision.confidence,
                 "action_type": action_type,
                 "payload": payload,
+                "screenshot_file": screenshot_file,
+                "archived_screenshot_file": archived_screenshot_file,
             },
         )
 

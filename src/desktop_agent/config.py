@@ -20,6 +20,7 @@ class RuntimeConfig:
     max_steps: int = 40
     step_delay_sec: float = 0.4
     screenshot_path: str = "./runs/latest.png"
+    screenshot_archive_dir: str = "./runs/screenshots"
     log_path: str = "./runs/session.log"
     llm_trace_enabled: bool = True
     llm_trace_dir: str = "./runs/llm_traces"
@@ -79,6 +80,7 @@ def load_config(path: str) -> AppConfig:
         max_steps=int(runtime_data.get("max_steps", 40)),
         step_delay_sec=float(runtime_data.get("step_delay_sec", 0.4)),
         screenshot_path=str(runtime_data.get("screenshot_path", "./runs/latest.png")),
+        screenshot_archive_dir=str(runtime_data.get("screenshot_archive_dir", "./runs/screenshots")),
         log_path=str(runtime_data.get("log_path", "./runs/session.log")),
         llm_trace_enabled=bool(runtime_data.get("llm_trace_enabled", True)),
         llm_trace_dir=str(runtime_data.get("llm_trace_dir", "./runs/llm_traces")),
@@ -116,6 +118,8 @@ def load_config(path: str) -> AppConfig:
         raise ValueError("runtime.image_format must be one of: jpeg, png")
     if runtime_cfg.image_max_long_edge <= 0:
         raise ValueError("runtime.image_max_long_edge must be > 0")
+    if not runtime_cfg.screenshot_archive_dir:
+        raise ValueError("runtime.screenshot_archive_dir cannot be empty")
     if runtime_cfg.llm_trace_enabled and not runtime_cfg.llm_trace_dir:
         raise ValueError("runtime.llm_trace_dir cannot be empty when llm_trace_enabled=true")
     if not 1 <= runtime_cfg.image_jpeg_quality <= 95:

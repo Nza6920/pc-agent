@@ -8,6 +8,7 @@ runtime: # Agent 运行时配置
   max_steps: 40 # 单次任务最多执行多少步，超过后停止
   step_delay_sec: 0.4 # 每一步执行后的固定等待时间（秒）
   screenshot_path: "./runs/latest.png" # 最新截图保存路径（会被覆盖）
+  screenshot_archive_dir: "./runs/screenshots" # 每一步截图归档目录（按 session_id + step 保存）
   log_path: "./runs/session.log" # 会话日志文件路径（JSONL）
   llm_trace_enabled: true # 是否记录每步完整提示词/模型返回 trace
   llm_trace_dir: "./runs/llm_traces" # trace 输出目录
