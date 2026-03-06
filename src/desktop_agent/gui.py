@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import yaml
+
 from .config import load_config
 
 if TYPE_CHECKING:
@@ -121,6 +123,39 @@ def _resolve_config_path(path_text: str) -> Path:
     return cwd_candidate
 
 
+def _format_phase(phase: str) -> str:
+    mapping = {
+        "observe": "Observe",
+        "execute": "Execute",
+        "finalize": "Finalize",
+    }
+    return mapping.get(phase, phase or "-")
+
+
+def _format_run_status(status: str) -> str:
+    mapping = {
+        "idle": "Idle",
+        "running": "Running",
+        "in_progress": "Running",
+        "completed": "Completed",
+        "blocked": "Blocked",
+        "stopped": "Stopped",
+        "stopping": "Stopping",
+        "error": "Error",
+    }
+    return mapping.get(status.lower(), status)
+
+
+def _status_from_exit_code(exit_code: int) -> str:
+    mapping = {
+        0: "Completed",
+        2: "Blocked",
+        3: "Stopped",
+        4: "Stopped",
+    }
+    return mapping.get(exit_code, f"Exit {exit_code}")
+
+
 if QtWidgets is not None:
     class MainWindow(QtWidgets.QMainWindow):
         def __init__(self) -> None:
@@ -172,17 +207,62 @@ if QtWidgets is not None:
             browse_button.clicked.connect(self._browse_config)
             reload_button = QtWidgets.QPushButton("Load")
             reload_button.clicked.connect(self._load_config_preview)
+            self.save_config_button = QtWidgets.QPushButton("Save")
+            self.save_config_button.clicked.connect(self._save_config_form)
 
             config_layout.addWidget(QtWidgets.QLabel("Path"), 0, 0)
             config_layout.addWidget(self.config_path_edit, 0, 1)
             config_layout.addWidget(browse_button, 0, 2)
             config_layout.addWidget(reload_button, 0, 3)
+            config_layout.addWidget(self.save_config_button, 0, 4)
+
+            form_widget = QtWidgets.QWidget()
+            form_layout = QtWidgets.QFormLayout(form_widget)
+            form_layout.setContentsMargins(0, 0, 0, 0)
+            form_layout.setSpacing(8)
+
+            self.model_edit = QtWidgets.QLineEdit()
+            self.base_url_edit = QtWidgets.QLineEdit()
+            self.base_url_edit.setPlaceholderText("https://api.example.com/v1")
+            self.api_key_edit = QtWidgets.QLineEdit()
+            self.api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+            self.api_key_edit.setPlaceholderText("OpenAI-compatible API key")
+            self.api_key_toggle_button = QtWidgets.QToolButton()
+            self.api_key_toggle_button.setText("Show")
+            self.api_key_toggle_button.clicked.connect(self._toggle_api_key_visibility)
+            api_key_widget = QtWidgets.QWidget()
+            api_key_layout = QtWidgets.QHBoxLayout(api_key_widget)
+            api_key_layout.setContentsMargins(0, 0, 0, 0)
+            api_key_layout.setSpacing(6)
+            api_key_layout.addWidget(self.api_key_edit, 1)
+            api_key_layout.addWidget(self.api_key_toggle_button)
+            self.safety_mode_combo = QtWidgets.QComboBox()
+            self.safety_mode_combo.addItems(["mixed", "manual", "auto"])
+            self.max_steps_spin = QtWidgets.QSpinBox()
+            self.max_steps_spin.setRange(1, 10000)
+            self.max_steps_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+            self.max_steps_spin.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+            self.step_delay_spin = QtWidgets.QDoubleSpinBox()
+            self.step_delay_spin.setRange(0.0, 60.0)
+            self.step_delay_spin.setDecimals(2)
+            self.step_delay_spin.setSingleStep(0.1)
+            self.step_delay_spin.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+            self.step_delay_spin.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+
+            form_layout.addRow("Model", self.model_edit)
+            form_layout.addRow("Base URL", self.base_url_edit)
+            form_layout.addRow("API Key", api_key_widget)
+            form_layout.addRow("Safety", self.safety_mode_combo)
+            form_layout.addRow("Max Steps", self.max_steps_spin)
+            form_layout.addRow("Step Delay (s)", self.step_delay_spin)
+
+            config_layout.addWidget(form_widget, 1, 0, 1, 5)
 
             self.config_summary = QtWidgets.QPlainTextEdit()
             self.config_summary.setReadOnly(True)
             self.config_summary.setMaximumBlockCount(100)
             self.config_summary.setPlaceholderText("Load a config file to preview runtime settings.")
-            config_layout.addWidget(self.config_summary, 1, 0, 1, 4)
+            config_layout.addWidget(self.config_summary, 2, 0, 1, 5)
             left_layout.addWidget(config_group)
 
             task_group = QtWidgets.QGroupBox("Task")
@@ -217,9 +297,11 @@ if QtWidgets is not None:
             self.status_label = QtWidgets.QLabel("Idle")
             status_font = QtGui.QFont("Microsoft YaHei UI", 12, QtGui.QFont.Weight.DemiBold)
             self.status_label.setFont(status_font)
+            self.status_title_label = QtWidgets.QLabel("Run Status")
             self.session_label = QtWidgets.QLabel("Session: -")
             self.step_label = QtWidgets.QLabel("Step: -")
             self.phase_label = QtWidgets.QLabel("Phase: -")
+            status_layout.addWidget(self.status_title_label)
             status_layout.addWidget(self.status_label)
             status_layout.addWidget(self.session_label)
             status_layout.addWidget(self.step_label)
@@ -302,6 +384,29 @@ if QtWidgets is not None:
                 QLineEdit[readOnly="false"] {
                     color: #102a43;
                 }
+                QComboBox, QSpinBox, QDoubleSpinBox {
+                    border: 1px solid #bcccdc;
+                    border-radius: 8px;
+                    background: white;
+                    color: #102a43;
+                    min-height: 32px;
+                    padding: 2px 8px;
+                }
+                QSpinBox::up-button, QSpinBox::down-button,
+                QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+                    width: 0px;
+                    border: none;
+                    padding: 0px;
+                    margin: 0px;
+                }
+                QComboBox QAbstractItemView {
+                    background: white;
+                    color: #102a43;
+                    border: 1px solid #bcccdc;
+                    selection-background-color: #d9e8ff;
+                    selection-color: #102a43;
+                    outline: none;
+                }
                 #statusCard {
                     background: #102a43;
                     color: #f0f4f8;
@@ -349,8 +454,52 @@ if QtWidgets is not None:
                 f"log_path={cfg.runtime.log_path}",
                 f"screenshot_path={cfg.runtime.screenshot_path}",
             ]
+            self.model_edit.setText(cfg.openai.model)
+            self.base_url_edit.setText(cfg.openai.base_url)
+            self.api_key_edit.setText(cfg.openai.api_key)
+            self.safety_mode_combo.setCurrentText(cfg.safety.mode)
+            self.max_steps_spin.setValue(cfg.runtime.max_steps)
+            self.step_delay_spin.setValue(cfg.runtime.step_delay_sec)
             self.config_summary.setPlainText("\n".join(summary))
             self._append_log(f"[INFO] config loaded: {path}")
+
+        def _save_config_form(self) -> None:
+            path_text = self.config_path_edit.text().strip()
+            if not path_text:
+                self._show_error("Config path is empty.")
+                return
+
+            path = _resolve_config_path(path_text)
+            try:
+                raw_text = path.read_text(encoding="utf-8")
+                data = yaml.safe_load(raw_text) or {}
+            except Exception as exc:
+                self._show_error(f"Failed to read config for saving:\n{exc}")
+                return
+
+            openai_data = data.setdefault("openai", {})
+            runtime_data = data.setdefault("runtime", {})
+            safety_data = data.setdefault("safety", {})
+
+            openai_data["model"] = self.model_edit.text().strip()
+            openai_data["base_url"] = self.base_url_edit.text().strip()
+            openai_data["api_key"] = self.api_key_edit.text().strip()
+            runtime_data["max_steps"] = int(self.max_steps_spin.value())
+            runtime_data["step_delay_sec"] = float(self.step_delay_spin.value())
+            safety_data["mode"] = self.safety_mode_combo.currentText()
+
+            try:
+                path.write_text(
+                    yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+                    encoding="utf-8",
+                )
+            except Exception as exc:
+                self._show_error(f"Failed to save config:\n{exc}")
+                return
+
+            self.config_path_edit.setText(str(path))
+            self._append_log(f"[INFO] config saved: {path}")
+            self._load_config_preview()
 
         def _start_run(self) -> None:
             if self._session is not None:
@@ -380,7 +529,7 @@ if QtWidgets is not None:
             self._set_running(True)
             self._set_status("Running")
             self.step_label.setText("Step: -")
-            self.phase_label.setText("Phase: observe")
+            self.phase_label.setText(f"Phase: {_format_phase('observe')}")
             self.session_label.setText("Session: pending")
             self.screenshot_meta_label.setText("Path: waiting for first capture")
             self._append_log(f"[INFO] starting task: {task}")
@@ -438,7 +587,7 @@ if QtWidgets is not None:
 
             if event_type == "step_decision":
                 self.step_label.setText(f"Step: {payload['step']}")
-                self.phase_label.setText(f"Phase: {payload['phase']}")
+                self.phase_label.setText(f"Phase: {_format_phase(payload['phase'])}")
                 self._set_status(payload["status"])
                 self._append_log(
                     f"[STEP {payload['step']}] {payload['status']} {payload['action_type']} "
@@ -504,7 +653,7 @@ if QtWidgets is not None:
                 return
 
             if event_type == "session_finished":
-                self._set_status(f"Exit {payload['exit_code']}")
+                self._set_status(_status_from_exit_code(payload["exit_code"]))
                 self._append_log(
                     f"[INFO] session finished exit_code={payload['exit_code']} "
                     f"elapsed={payload['total_elapsed_sec']:.2f}s"
@@ -555,10 +704,27 @@ if QtWidgets is not None:
             self.stop_button.setEnabled(running)
             self.config_path_edit.setEnabled(not running)
             self.task_edit.setEnabled(not running)
+            self.model_edit.setEnabled(not running)
+            self.base_url_edit.setEnabled(not running)
+            self.api_key_edit.setEnabled(not running)
+            self.api_key_toggle_button.setEnabled(not running)
+            self.safety_mode_combo.setEnabled(not running)
+            self.max_steps_spin.setEnabled(not running)
+            self.step_delay_spin.setEnabled(not running)
+            self.save_config_button.setEnabled(not running)
+
+        def _toggle_api_key_visibility(self) -> None:
+            if self.api_key_edit.echoMode() == QtWidgets.QLineEdit.EchoMode.Password:
+                self.api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Normal)
+                self.api_key_toggle_button.setText("Hide")
+            else:
+                self.api_key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+                self.api_key_toggle_button.setText("Show")
 
         def _set_status(self, status: str) -> None:
-            self._last_status = status
-            self.status_label.setText(status)
+            formatted = _format_run_status(status)
+            self._last_status = formatted
+            self.status_label.setText(formatted)
 
         def _append_log(self, message: str) -> None:
             self.log_view.appendPlainText(message)
