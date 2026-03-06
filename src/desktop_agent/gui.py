@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import queue
+import shutil
 import sys
 import threading
 import traceback
@@ -121,6 +122,25 @@ def _resolve_config_path(path_text: str) -> Path:
         return project_candidate
 
     return cwd_candidate
+
+
+def _config_template_path() -> Path:
+    return _project_root() / "config.yaml.example"
+
+
+def _ensure_default_config(path: Path) -> tuple[Path, bool]:
+    if path.exists():
+        return path, False
+    if path.name.lower() != "config.yaml":
+        return path, False
+
+    template_path = _config_template_path()
+    if not template_path.exists():
+        return path, False
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(template_path, path)
+    return path, True
 
 
 def _format_phase(phase: str) -> str:
@@ -436,6 +456,7 @@ if QtWidgets is not None:
                 self._show_error("Config path is empty.")
                 return
             path = _resolve_config_path(path_text)
+            path, created = _ensure_default_config(path)
             try:
                 cfg = load_config(str(path))
             except Exception as exc:
@@ -444,6 +465,8 @@ if QtWidgets is not None:
                 return
 
             self.config_path_edit.setText(str(path))
+            if created:
+                self._append_log(f"[INFO] created config from template: {path}")
             summary = [
                 f"model={cfg.openai.model}",
                 f"base_url={cfg.openai.base_url}",
@@ -470,6 +493,7 @@ if QtWidgets is not None:
                 return
 
             path = _resolve_config_path(path_text)
+            path, created = _ensure_default_config(path)
             try:
                 raw_text = path.read_text(encoding="utf-8")
                 data = yaml.safe_load(raw_text) or {}
@@ -498,6 +522,8 @@ if QtWidgets is not None:
                 return
 
             self.config_path_edit.setText(str(path))
+            if created:
+                self._append_log(f"[INFO] created config from template: {path}")
             self._append_log(f"[INFO] config saved: {path}")
             self._load_config_preview()
 

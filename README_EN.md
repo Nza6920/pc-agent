@@ -57,6 +57,12 @@ python -m venv .venv
 pip install -e .[dev]
 ```
 
+To enable the GUI:
+
+```powershell
+pip install -e .[gui]
+```
+
 ## Configuration
 
 1. Copy template:
@@ -126,6 +132,51 @@ python agent.py --config config.yaml --task "Open NetEase Cloud Music and play M
 ```
 
 Without `--task`, CLI enters interactive mode.
+
+GUI entry:
+
+```powershell
+desktop-agent-gui
+python -m desktop_agent.gui
+```
+
+## GUI
+
+The GUI is a PySide6-based runner for the same `AgentRunner` engine used by the CLI.
+
+Current GUI capabilities:
+
+- load `config.yaml` automatically from the project root or a selected path
+- create `config.yaml` automatically from `config.yaml.example` on first GUI use if it does not exist yet
+- edit and save common config fields directly in the window
+- run tasks in a background thread
+- preview the latest screenshot and archived screenshot path
+- inspect event logs, session id, step, phase, and run status
+- approve or reject risky actions through dialog prompts
+
+Editable fields in the GUI:
+
+- `openai.model`
+- `openai.base_url`
+- `openai.api_key`
+- `runtime.max_steps`
+- `runtime.step_delay_sec`
+- `safety.mode`
+
+Current GUI behavior:
+
+- `Run Status` shows the overall execution state such as `Running`, `Blocked`, `Completed`, or `Stopped`
+- `Phase` shows the current execution phase such as `Observe`, `Execute`, or `Finalize`
+- config fields are locked while a run is active
+- `API Key` is hidden by default and can be toggled visible
+- when the default config file is missing, the GUI creates it from the template before loading
+
+Current GUI limitations:
+
+- Windows only
+- only a subset of config fields are editable in the GUI; the rest still come from YAML
+- `Phase` is not the same thing as final outcome; a run can end as `Blocked` while still being in `Execute`
+- the GUI does not yet provide packaged binaries; run it from the Python environment
 
 ## Runtime Loop
 
