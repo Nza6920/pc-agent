@@ -50,7 +50,6 @@ class AgentRunner:
         total_start = time.perf_counter()
         session_id = uuid4().hex
         cfg = self.cfg
-        hooks = self.hooks
 
         enable_windows_dpi_awareness()
         self._show_desktop()

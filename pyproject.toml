@@ -20,9 +20,13 @@ dependencies = [
 dev = [
   "pytest>=8.0.0",
 ]
+gui = [
+  "PySide6>=6.8.0",
+]
 
 [project.scripts]
 desktop-agent = "desktop_agent.cli:main"
+desktop-agent-gui = "desktop_agent.gui:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
