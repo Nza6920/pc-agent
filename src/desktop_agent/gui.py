@@ -130,6 +130,7 @@ if QtWidgets is not None:
 
             self._session: RunnerSession | None = None
             self._latest_screenshot_path: str = ""
+            self._last_status: str = "Idle"
             self._build_ui()
 
             self._poll_timer = QtCore.QTimer(self)
@@ -218,9 +219,11 @@ if QtWidgets is not None:
             self.status_label.setFont(status_font)
             self.session_label = QtWidgets.QLabel("Session: -")
             self.step_label = QtWidgets.QLabel("Step: -")
+            self.phase_label = QtWidgets.QLabel("Phase: -")
             status_layout.addWidget(self.status_label)
             status_layout.addWidget(self.session_label)
             status_layout.addWidget(self.step_label)
+            status_layout.addWidget(self.phase_label)
             left_layout.addWidget(self.status_card)
             left_layout.addStretch(1)
 
@@ -240,6 +243,9 @@ if QtWidgets is not None:
                 "background: #0f172a; color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 8px;"
             )
             preview_layout.addWidget(self.screenshot_label)
+            self.screenshot_meta_label = QtWidgets.QLabel("Path: -")
+            self.screenshot_meta_label.setWordWrap(True)
+            preview_layout.addWidget(self.screenshot_meta_label)
             right_layout.addWidget(preview_group, 3)
 
             log_group = QtWidgets.QGroupBox("Event Log")
@@ -369,11 +375,14 @@ if QtWidgets is not None:
                 return
 
             self.config_path_edit.setText(str(config_path))
+            self.log_view.clear()
             self._session = RunnerSession(cfg, task)
             self._set_running(True)
-            self.status_label.setText("Running")
+            self._set_status("Running")
             self.step_label.setText("Step: -")
+            self.phase_label.setText("Phase: observe")
             self.session_label.setText("Session: pending")
+            self.screenshot_meta_label.setText("Path: waiting for first capture")
             self._append_log(f"[INFO] starting task: {task}")
             self._poll_timer.start()
             self._session.start()
@@ -382,7 +391,7 @@ if QtWidgets is not None:
             if self._session is None:
                 return
             self._session.request_stop()
-            self.status_label.setText("Stopping")
+            self._set_status("Stopping")
             self._append_log("[INFO] stop requested")
 
         def _drain_events(self) -> None:
@@ -421,11 +430,16 @@ if QtWidgets is not None:
 
             if event_type == "screenshot_captured":
                 self._update_screenshot(payload["screenshot_file"])
+                archived = payload.get("archived_screenshot_file", "")
+                self.screenshot_meta_label.setText(
+                    f"Path: {payload['screenshot_file']}\nArchive: {archived}"
+                )
                 return
 
             if event_type == "step_decision":
-                self.step_label.setText(f"Step: {payload['step']} ({payload['phase']})")
-                self.status_label.setText(payload["status"])
+                self.step_label.setText(f"Step: {payload['step']}")
+                self.phase_label.setText(f"Phase: {payload['phase']}")
+                self._set_status(payload["status"])
                 self._append_log(
                     f"[STEP {payload['step']}] {payload['status']} {payload['action_type']} "
                     f"{payload['payload']} thought={payload['thought']}"
@@ -475,21 +489,22 @@ if QtWidgets is not None:
                 return
 
             if event_type == "blocked":
-                self.status_label.setText("Blocked")
+                self._set_status("Blocked")
                 self._append_log(f"[BLOCKED] {payload['reason']}")
                 return
 
             if event_type == "done":
-                self.status_label.setText("Completed")
+                self._set_status("Completed")
                 self._append_log(f"[DONE] {payload['message']}")
                 return
 
             if event_type == "stopped":
-                self.status_label.setText("Stopped")
+                self._set_status("Stopped")
                 self._append_log(f"[STOP] {payload['reason']}")
                 return
 
             if event_type == "session_finished":
+                self._set_status(f"Exit {payload['exit_code']}")
                 self._append_log(
                     f"[INFO] session finished exit_code={payload['exit_code']} "
                     f"elapsed={payload['total_elapsed_sec']:.2f}s"
@@ -497,7 +512,7 @@ if QtWidgets is not None:
                 return
 
             if event_type == "session_error":
-                self.status_label.setText("Error")
+                self._set_status("Error")
                 self._append_log(f"[ERROR] {payload['error']}")
                 self._append_log(payload["traceback"])
                 return
@@ -506,6 +521,7 @@ if QtWidgets is not None:
             self._latest_screenshot_path = path
             pixmap = QtGui.QPixmap(path)
             if pixmap.isNull():
+                self.screenshot_meta_label.setText(f"Path: {path}\nStatus: failed to load image")
                 self.screenshot_label.setText(f"Failed to load screenshot:\n{path}")
                 return
 
@@ -539,6 +555,10 @@ if QtWidgets is not None:
             self.stop_button.setEnabled(running)
             self.config_path_edit.setEnabled(not running)
             self.task_edit.setEnabled(not running)
+
+        def _set_status(self, status: str) -> None:
+            self._last_status = status
+            self.status_label.setText(status)
 
         def _append_log(self, message: str) -> None:
             self.log_view.appendPlainText(message)
